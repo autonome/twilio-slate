@@ -1,0 +1,25 @@
+{
+  "name": "twilio-ifttt-photo-redirect",
+  "version": "0.0.1",
+  "description": "Send a photo to a Twilio number, and redirect to an IFTTT Maker URL.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "body-parser": "^1.19.0",
+    "node-fetch": "^2.6.1",
+    "twilio": "3.54.1",
+    "form-data": "^3.0.0"
+  },
+  "engines": {
+    "node": "14"
+  },
+  "keywords": [
+    "node",
+    "twilio",
+    "express"
+  ],
+  "license": "MIT"
+}
