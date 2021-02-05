@@ -1,3 +1,6 @@
+const FormData = require('form-data')
+const fileType = require('file-type')
+
 /*
   {
     ToCountry: 'US',
@@ -25,11 +28,18 @@
 */
 
 const strings = {
-  FIRST_CONTACT: '🤖 Number registered! What is your Slate.host API key?',
-  NO_AUTH_ID: '🤖 I still need your Slate.host API key, yo.',
+  FIRST_CONTACT: '🤖 Hello ☎ person, welcome to the dweb! What is your Slate.host API key?',
+  NEED_AUTH_ID: '🤖 I need your Slate.host API key, yo.',
+  INVALID_AUTH_ID: '🤖 Er, that does not look like a Slate API key - they start with SLA...',
+  NEED_SLATE_ID: '🤖 What is the name of the Slate u want to post to?',
+  SLATE_ID_SAVED: '🤖 FINE, I will post to Slate ',
+  SLATE_ID_IT_AINT: '🤖 Er, that is not one of your Slates, here are your Slates:',
+  SLATE_ATE_IT_GOOD: '🤖 Slate just put your photo on the dweb, share victoriously: ',
+  SLATE_NO_LIKEY: '🤖 Slate just could not even deal with that image, keeled over. Sorry.',
+  WHATEVER: '🤖 I don\'t even know what you\'re talking about.',
 }
 
-const getString = async label => {
+const getString = label => {
   if (strings.hasOwnProperty(label))
     return strings[label]
   throw new Error('string no existo:', label);
@@ -37,11 +47,11 @@ const getString = async label => {
 
 (async() => {
   
-var express = require('express')
-var bodyParser = require('body-parser')
+const express = require('express')
+const bodyParser = require('body-parser')
 const fetch = require('node-fetch')
 
-var app = express()
+const app = express()
 app.use(express.static('public'))
 app.use(bodyParser.urlencoded({extended: false}))
 
@@ -62,132 +72,150 @@ let message = {}
   }
 }
 */
+
 let accounts = {}
 
-const accountExists = async (accounts, msg) => {
-  return accounts.hasOwnProperty(msg.phoneNum)
+const accountExists = (accounts, phoneNum) => {
+  return accounts.hasOwnProperty(phoneNum)
 }
 
-// Configure your Twilio phonenumber with http://projectdomain.glitch.me/message
+const getAccount = num => {
+  if (!accounts.hasOwnProperty(num)) {
+    // initialize record
+    accounts[num] = {
+      currentState: 'UNINITIALIZED',
+      phoneNum: num,
+      authId: '',
+      slateId: ''
+    }
+  }
+  return accounts[num]  
+}
+
 // when an SMS comes in, Twilio makes a POST request to this endpoint
 app.post("/message", async function (request, response) {
   
   // data about the SMS passed in the request parameters
-  const msg = request.body
-  const messageType = getMessageType(accounts, msg)
-    
+  let ctx = {
+    accounts: accounts,
+    msg: request.body,
+    //messageType: getMessageType(accounts, request.body),
+    phoneNum: request.body.From,
+    msgText: request.body.Body
+  }
+
+  let account = getAccount(ctx.phoneNum)
+
   const states = {
-    NO_ACCOUNT: onNoAccount,
-    NO_AUTH_ID: onNoAuthId,
-    NO_SLATE_ID: onNoSlateId,
-    CONFIGURED: onConfigured
-  }
-  
-  const onNoAccount = async () => {
-    accounts[phoneNum] = {
-      phoneNum: phoneNum,
-      authId: '',
-      slateId: ''
-    }
+    UNINITIALIZED: {
+      on: async () => {
 
-    let txt = '🤖 Number registered! What is your Slate.host API key?'
-    response.send(wrapResponseText(txt))
-  }
-  
-  const onNoAuthId = async () => {
-  }
-  
-  const onNoSlateId = async () => {
-  }
-  
-  const onConfigured = async () => {
-  }
-  
-  const messageTypes = {
-    FIRST_CONTACT: 1,
-    AUTH_ID: 2,
-    SLATE_ID: 3,
-    PHOTO: 4,
-    UNKNOWN: 5
-  }
-  
-  const getMessageType = async (accounts, msg) => {
-    const phoneNum = request.body.From
-    const msgText = request.body.Body
-    const accountExists = accounts.hasOwnProperty(phoneNum)
-    if (!accountExists)
-      return messageTypes.FIRST_CONTACT;
-    if (msgText.indexOf('SLA') == 0)
-      return messageTypes.AUTH_ID;
-    if (msgText.indexOf('slate:') == 0)
-      return messageTypes.SLATE_ID;
-    if (msg.MediaUrl0)
-      return messageTypes.PHOTO;
-    return messageTypes.UNKNOWN;
-  }
-  
-  const messageType = getMessageType(accounts, msg)
-  
-  
-  let account = accounts[phoneNum]  
-  
-  // register api key
-  if (msgText.indexOf('SLA') == 0) {
-    account.authId = request.body.Body
-  }
-  
-  // no api key yet
-  if (account.authId.length == 0) {
-    let txt = '🤖 I still need your Slate.host API key, yo.'
-    response.send(wrapResponseText(txt))
-    return;
-  }
-  
-  if (msgText.indexOf('slate:') == 0) {
-    const providedName = msgText.replace('slate:', '').trim()
-    console.log('provided slate', providedName)
-    const el = account.slates.find(el => el.slatename == providedName)
-    if (el) {
-      account.slateId = el.id
-    }
-    response.send(wrapResponseText(el.slatename))
-    return;
-  }
-  
-  // no slate id yet
-  if (account.slateId.length == 0) {
-    const resp = await getSlates(account.authId)
-    console.log(resp)
-    account.slates = resp.slates
-    const names = account.slates.map(obj => obj.slatename)
-    let txt = '🤖 Which slate to upload to by default? Reply with "slate: " followed by one of these names: ' + names.join(',')
-    response.send(wrapResponseText(txt))
-    return;
+        // don't do anything if there's no phonenum
+        // should never happen lolcry
+        if (ctx.phoneNum.length == 0)
+          return;
+
+        const phoneNum = ctx.phoneNum
+
+        let txt = '🤖 Number registered! What is your Slate.host API key?'
+        response.send(wrapResponseText(getString('FIRST_CONTACT')))
+
+        // update state
+        account.currentState = 'NEED_AUTH_ID'
+      }
+    },
+    NEED_AUTH_ID: {
+      on: async () => {
+
+        // register api key
+        // TODO: validate
+        if (ctx.msgText.indexOf('SLA') == 0) {
+          // store
+          account.authId = request.body.Body
+          // update state
+          account.currentState = 'NEED_SLATE_ID'
+          // populate slates
+          const resp = await getSlates(account.authId)
+          account.slates = resp.slates
+          // send response
+          const names = account.slates.map(obj => obj.slatename)
+          response.send(wrapResponseText(getString('NEED_SLATE_ID') + ' ' + names.join(', ')))
+        }
+        else if (ctx.msgText.length > 0) {
+          response.send(wrapResponseText(getString('INVALID_AUTH_ID')))
+        }
+        else {
+          response.send(wrapResponseText(getString('NEED_AUTH_ID')))
+        }
+      }
+    },
+    NEED_SLATE_ID: {
+      on: async () => {
+        const msgText = ctx.msgText
+
+        if (msgText.length < 0) {
+          // send response
+          const names = account.slates.map(obj => obj.slatename)
+          response.send(wrapResponseText(getString('NEED_SLATE_ID') + ' ' + names.join(', ')))
+        }
+        else {
+          const providedName = msgText.trim()
+          const el = account.slates.find(el => el.slatename == providedName)
+          if (el) {
+            account.slateId = el.id
+						account.slate = el
+            response.send(wrapResponseText(getString('SLATE_ID_SAVED') + el.slatename))
+            // update state
+            account.currentState = 'CONFIGURED'
+          }
+          else {
+            // send response
+            const names = account.slates.map(obj => obj.slatename)
+            response.send(wrapResponseText(getString('SLATE_ID_IT_AINT') + ' ' + names.join(', ')))
+          }
+        }
+      }
+    },
+    CONFIGURED: {
+      on: async () => {
+        const msgText = ctx.msgText
+        const imageURL = ctx.msg.MediaUrl0
+
+        if (imageURL.length > 0) {
+          
+          const imgResponse = await fetch(imageURL)
+          const buffer = await imgResponse.buffer()
+
+
+          /*
+          const fs = require('fs')
+          fs.open('./test.jpg', 'w', function(err, fd) {
+            if (err) {
+              console.log(err)
+            }
+            fs.write(fd, buffer, 0, buffer.length, null, function(err) {
+              console.log('wft')
+            });
+          });
+          */
+
+          const resp = await postToSlate(account, buffer)
+
+          if (resp.hasOwnProperty('url')) {
+            response.send(wrapResponseText(getString('SLATE_ATE_IT_GOOD') + resp.url))
+          }
+          else {
+            response.send(wrapResponseText(getString('SLATE_NO_LIKEY')))
+          }
+        }
+        else if (msgText.length > 0) {
+          response.send(wrapResponseText(getString('WHATEVER')))
+        }
+      }
+    },
   }
 
-  /*
-  if (request.body.MediaUrl0) {
-    fetch(iftttURL, {
-      method: 'POST',
-      body: JSON.stringify(iftttMsg),
-      headers: { 'Content-Type': 'application/json' }
-    })
-    .then(res => console.log('posted image to ifttt'))
-  }
-  */
-  
-  /*
-  // we'll stick that data into a global variable for the client to retreive
-  message['body'] = request.body.Body
-  message['from'] = "XXX-XXX-" + request.body.From.slice(-4)
-  //message['mediaURL'] = request.body.MediaUrl0
-  
-  // send back some TwiML (XML) for the reply text
-  let responseText = 'wtf'
-  if (responseText.length > 0) {
-    response.send(wrapResponseText(responseText))
-  }
-  */
+  await states[account.currentState].on()
 })
 
 function wrapResponseText(text) {
@@ -216,6 +244,29 @@ app.get("/message-for-client", function (request, response) {
 app.get("/", function (request, response) {
   response.sendFile(__dirname + '/views/index.html')
 })
+
+const postToSlate = async (account, buffer) => {
+
+	const url = 'https://uploads.slate.host/api/public/' + account.slateId
+
+  const type = await fileType.fromBuffer(buffer)
+
+	let data = new FormData()
+	data.append('data', buffer, 'fromphone.' + type.ext)
+
+	const response = await fetch(url, {
+		method: 'POST',
+		headers: {
+			// NOTE: your API key
+			Authorization: 'Basic ' + account.authId
+		},
+		body: data
+	})
+
+	// NOTE: the URL to your asset will be available in the JSON response.
+	const json = await response.json()
+  return json
+}
 
 // start the server
 var listener = app.listen(process.env.PORT, function () {
