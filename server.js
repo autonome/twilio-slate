@@ -1,6 +1,3 @@
-const FormData = require('form-data')
-const fileType = require('file-type')
-
 /*
   {
     ToCountry: 'US',
@@ -50,6 +47,8 @@ const getString = label => {
 const express = require('express')
 const bodyParser = require('body-parser')
 const fetch = require('node-fetch')
+const FormData = require('form-data')
+const fileType = require('file-type')
 
 const app = express()
 app.use(express.static('public'))
@@ -60,52 +59,53 @@ const twilioAuthToken = process.env.TWILIO_AUTH_TOKEN
 
 const client = require('twilio')(twilioAccountSid, twilioAuthToken)
 
-// global var for info about the last message
-let message = {}
+const low = require('lowdb')
+const FileSync = require('lowdb/adapters/FileSync')
+const adapter = new FileSync('.data/db.json')
+const db = low(adapter)
 
-/*
-{
-  phoneNum: {
-    phoneNum: '',
-    authId: '',
-    slateId: ''
-  }
-}
-*/
+db.defaults({ accounts: [] }).write()
 
 let accounts = {}
 
-const accountExists = (accounts, phoneNum) => {
-  return accounts.hasOwnProperty(phoneNum)
-}
-
 const getAccount = num => {
-  if (!accounts.hasOwnProperty(num)) {
-    // initialize record
-    accounts[num] = {
+  let a = db.get('accounts')
+    .find({ phoneNum: num })
+    .value()
+  
+  if (!a) {
+    db.get('accounts').push({
       currentState: 'UNINITIALIZED',
       phoneNum: num,
       authId: '',
       slateId: ''
-    }
+    }).write()
   }
-  return accounts[num]  
+  
+  return a 
 }
 
 // when an SMS comes in, Twilio makes a POST request to this endpoint
 app.post("/message", async function (request, response) {
+  //console.log(request.body.From, request.body.Body)
   
   // data about the SMS passed in the request parameters
   let ctx = {
-    accounts: accounts,
     msg: request.body,
-    //messageType: getMessageType(accounts, request.body),
     phoneNum: request.body.From,
     msgText: request.body.Body
   }
-
+  
   let account = getAccount(ctx.phoneNum)
 
+  const updateAccount = (num, k, v) => {
+    account[k] = v
+    db.get('accounts')
+      .find({phoneNum: num})
+      .assign({k: v})
+      .write();
+  }
+  
   const states = {
     UNINITIALIZED: {
       on: async () => {
@@ -115,13 +115,10 @@ app.post("/message", async function (request, response) {
         if (ctx.phoneNum.length == 0)
           return;
 
-        const phoneNum = ctx.phoneNum
-
-        let txt = '🤖 Number registered! What is your Slate.host API key?'
         response.send(wrapResponseText(getString('FIRST_CONTACT')))
 
         // update state
-        account.currentState = 'NEED_AUTH_ID'
+        updateAccount(ctx.phoneNum, 'currentState', 'NEED_AUTH_ID')
       }
     },
     NEED_AUTH_ID: {
@@ -131,12 +128,13 @@ app.post("/message", async function (request, response) {
         // TODO: validate
         if (ctx.msgText.indexOf('SLA') == 0) {
           // store
-          account.authId = request.body.Body
+          updateAccount(ctx.phoneNum, 'authId', request.body.Body)
           // update state
-          account.currentState = 'NEED_SLATE_ID'
+          updateAccount(ctx.phoneNum, 'currentState', 'NEED_SLATE_ID')
           // populate slates
           const resp = await getSlates(account.authId)
-          account.slates = resp.slates
+          //account.slates = resp.slates
+          updateAccount(ctx.phoneNum, 'slates', resp.slates)
           // send response
           const names = account.slates.map(obj => obj.slatename)
           response.send(wrapResponseText(getString('NEED_SLATE_ID') + ' ' + names.join(', ')))
@@ -162,11 +160,11 @@ app.post("/message", async function (request, response) {
           const providedName = msgText.trim()
           const el = account.slates.find(el => el.slatename == providedName)
           if (el) {
-            account.slateId = el.id
-						account.slate = el
+            updateAccount(ctx.phoneNum, 'slateId', el.id)
+            updateAccount(ctx.phoneNum, 'slate', el)
             response.send(wrapResponseText(getString('SLATE_ID_SAVED') + el.slatename))
             // update state
-            account.currentState = 'CONFIGURED'
+            updateAccount(ctx.phoneNum, 'currentState', 'CONFIGURED')
           }
           else {
             // send response
@@ -181,24 +179,13 @@ app.post("/message", async function (request, response) {
         const msgText = ctx.msgText
         const imageURL = ctx.msg.MediaUrl0
 
-        if (imageURL.length > 0) {
+        if (imageURL && imageURL.length > 0) {
           
+          // fetch image data
           const imgResponse = await fetch(imageURL)
           const buffer = await imgResponse.buffer()
 
-
-          /*
-          const fs = require('fs')
-          fs.open('./test.jpg', 'w', function(err, fd) {
-            if (err) {
-              console.log(err)
-            }
-            fs.write(fd, buffer, 0, buffer.length, null, function(err) {
-              console.log('wft')
-            });
-          });
-          */
-
+          // post image to slate
           const resp = await postToSlate(account, buffer)
 
           if (resp.hasOwnProperty('url')) {
@@ -212,7 +199,7 @@ app.post("/message", async function (request, response) {
           response.send(wrapResponseText(getString('WHATEVER')))
         }
       }
-    },
+    }
   }
 
   await states[account.currentState].on()
@@ -237,7 +224,7 @@ const getSlates = async (authId) => {
 
 app.get("/message-for-client", function (request, response) {
   // send back the global message var to parse on frontend
-  response.send(message)
+  //response.send(message)
 })
 
 // serve up the homepage
