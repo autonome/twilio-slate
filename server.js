@@ -234,22 +234,19 @@ app.get("/", function (request, response) {
 
 const postToSlate = async (account, buffer) => {
   const url = "https://uploads.slate.host/api/public/" + account.slateId;
-
   const type = await fileType.fromBuffer(buffer);
-
+  
   let data = new FormData();
   data.append("data", buffer, "fromphone." + type.ext);
-
+  
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      // NOTE: your API key
       Authorization: "Basic " + account.authId
     },
     body: data
   });
-
-  // NOTE: the URL to your asset will be available in the JSON response.
+  
   const json = await response.json();
   return json
 }
