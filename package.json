@@ -1,0 +1,31 @@
+{
+  "name": "twilio-slate",
+  "version": "0.0.1",
+  "description": "Send a photo to a Twilio number, and post to Slate.host.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "body-parser": "^1.19.0",
+    "dotenv": "^8.2.0",
+    "express": "^4.17.1",
+    "file-type": "^16.2.0",
+    "form-data": "^3.0.0",
+    "node-fetch": "^2.6.1",
+    "twilio": "^3.55.1"
+  },
+  "engines": {
+    "node": "14"
+  },
+  "keywords": [
+    "node",
+    "twilio",
+    "express"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^2.0.7"
+  }
+}
