@@ -14,7 +14,9 @@
     "file-type": "^16.2.0",
     "form-data": "^3.0.0",
     "node-fetch": "^2.6.1",
-    "twilio": "^3.55.1"
+    "twilio": "^3.55.1",
+    "mongodb": "^3.6.4",
+    "lowdb": "^1.0.0"
   },
   "engines": {
     "node": "14"
