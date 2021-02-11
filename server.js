@@ -195,6 +195,23 @@ app.post("/message", async function (request, response) {
             response.send(wrapResponseText(getString('SLATE_NO_LIKEY')))
           }
         }
+        else if (msgText.indexOf('change slate to ') == 0) {
+          // update slates
+          const resp = await getSlates(account.authId)
+          updateAccount(ctx.phoneNum, 'slates', resp.slates)
+          // check name
+          const providedName = msgText.replace('change slate to ', '').trim()
+          const el = account.slates.find(el => el.slatename == providedName)
+          if (el) {
+            updateAccount(ctx.phoneNum, 'slateId', el.id)
+            updateAccount(ctx.phoneNum, 'slate', el)
+            response.send(wrapResponseText(getString('SLATE_ID_SAVED') + el.slatename))
+          }
+          else {
+            const names = account.slates.map(obj => obj.slatename)
+            response.send(wrapResponseText(getString('SLATE_ID_IT_AINT') + ' ' + names.join(', ')))
+          }
+        }
         else if (msgText.length > 0) {
           response.send(wrapResponseText(getString('WHATEVER')))
         }
